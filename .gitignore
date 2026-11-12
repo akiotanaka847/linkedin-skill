@@ -1,0 +1,19 @@
+# Sistema, editor y herramientas
+.DS_Store
+__pycache__/
+*.pyc
+*.tmp
+.venv/
+.idea/
+.vscode/
+
+# Datos personales: viven en ~/.config/linkedin-skill/, nunca en el repo.
+# Si alguien los copia aquí por error, git no los ve.
+perfil.local.md
+banco-de-historias.local.md
+registro.csv
+borradores/
+.linkedin/
+
+# Ajustes locales de Claude Code
+.claude/settings.local.json

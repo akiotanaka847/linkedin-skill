@@ -1,0 +1,17 @@
+# Saltos de línea LF en todas las plataformas (los tests leen la cabecera de SKILL.md).
+* text=auto eol=lf
+
+# Excluye lo que no es de ejecución del `git archive` que usa /plugin install.
+
+__pycache__/   export-ignore
+*.pyc          export-ignore
+.DS_Store      export-ignore
+
+tests/          export-ignore
+implementation/ export-ignore
+
+.github/       export-ignore
+.gitignore     export-ignore
+.gitattributes export-ignore
+
+# NOTA: .claude-plugin/ NO se excluye: /plugin install necesita el manifiesto.

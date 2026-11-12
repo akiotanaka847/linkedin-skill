@@ -1,0 +1,21 @@
+{
+  "name": "linkedin",
+  "version": "1.0.0",
+  "description": "Contenido de LinkedIn para profesionales de marketing y tecnología, en español e inglés. Banco de historias reales con cifra y fuente, posts a partir de un caso, revisor que bloquea muletillas, rayas, barras y nombres confidenciales, calendario por pilares, comentarios, perfil, embajadores y vacantes, y registro de métricas. La skill redacta; la persona publica.",
+  "author": {
+    "name": "Akio Tanaka"
+  },
+  "homepage": "https://github.com/akiotanaka847/linkedin-skill",
+  "repository": "https://github.com/akiotanaka847/linkedin-skill",
+  "license": "MIT",
+  "keywords": [
+    "linkedin",
+    "marketing",
+    "contenido",
+    "copywriting",
+    "personal-branding",
+    "employee-advocacy",
+    "espanol",
+    "spanish"
+  ]
+}

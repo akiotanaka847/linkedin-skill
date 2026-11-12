@@ -1,0 +1,16 @@
+# Exclusiones para el escáner de instalación de Agent Skills.
+
+.git/
+.venv/
+__pycache__/
+*.pyc
+*.log
+.DS_Store
+
+.github/
+.claude-plugin/
+
+tests/
+implementation/
+README.md
+CHANGELOG.md
