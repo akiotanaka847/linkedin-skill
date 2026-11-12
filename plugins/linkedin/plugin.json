@@ -1,0 +1,33 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "linkedin",
+  "version": "1.1.0",
+  "description": "Contenido de LinkedIn para profesionales y equipos de marketing, en español e inglés. Banco de historias reales con cifra y fuente, posts a partir de un caso, revisor que bloquea muletillas, rayas, barras y nombres confidenciales, calendario, comentarios, perfil, página de empresa con aprobación por rol y exportación a Hootsuite, y registro de métricas. La skill redacta; la persona publica.",
+  "author": {
+    "name": "Akio Tanaka",
+    "url": "https://github.com/akiotanaka847"
+  },
+  "homepage": "https://github.com/akiotanaka847/linkedin-skill",
+  "repository": "https://github.com/akiotanaka847/linkedin-skill",
+  "license": "MIT",
+  "keywords": ["linkedin", "marketing", "contenido", "copywriting", "employee-advocacy", "hootsuite", "espanol", "spanish"],
+  "extensions": {
+    "com.openai": {
+      "interface": {
+        "displayName": "LinkedIn",
+        "shortDescription": "Posts, comentarios y página de empresa a partir de casos reales, sin inventar cifras.",
+        "longDescription": "Arma un banco de historias con cifra y fuente, redacta posts a partir de un caso, revisa cada borrador con un script que bloquea muletillas y nombres confidenciales, lleva el calendario, prepara la página de empresa con aprobación por rol y exportación a Hootsuite, y registra las métricas. Redacta; tú publicas.",
+        "developerName": "Akio Tanaka",
+        "category": "Productivity",
+        "capabilities": ["Interactive", "Read", "Write"],
+        "websiteURL": "https://github.com/akiotanaka847/linkedin-skill",
+        "defaultPrompt": [
+          "Entrevístame para llenar mi banco de historias de LinkedIn.",
+          "Escribe un post de LinkedIn a partir de este caso.",
+          "Revisa este borrador antes de publicarlo."
+        ],
+        "brandColor": "#0A66C2"
+      }
+    }
+  }
+}

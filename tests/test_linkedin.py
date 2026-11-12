@@ -1,5 +1,6 @@
 """Tests de la skill /linkedin. Solo biblioteca estándar, sin red."""
 
+import csv
 import importlib.util
 import json
 import os
@@ -8,7 +9,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 
 RAIZ = Path(__file__).resolve().parents[1]
@@ -23,8 +24,9 @@ RAYA = "\u2014"
 SEMIRRAYA = "\u2013"
 
 
-def codigos(texto, tipo="post", nunca=(), nivel=None, idioma="auto"):
-    inf = li.revisar(texto, tipo=tipo, idioma=idioma, nunca=nunca)
+def codigos(texto, tipo="post", nunca=(), nivel=None, idioma="auto", prohibidas=(), avisos_obligatorios=()):
+    inf = li.revisar(texto, tipo=tipo, idioma=idioma, nunca=nunca,
+                     prohibidas=prohibidas, avisos_obligatorios=avisos_obligatorios)
     return [h["codigo"] for h in inf["hallazgos"] if nivel is None or h["nivel"] == nivel]
 
 
@@ -163,6 +165,8 @@ class Otros(unittest.TestCase):
         self.assertIn("10 veces", cifras)
         self.assertIn("0,2%", cifras)
         self.assertIn("2026", cifras)
+        en = [c["cifra"] for c in li.revisar("A 90 minutes workshop, 3 days later.")["cifras"]]
+        self.assertEqual(en, ["90 minutes", "3 days"])
 
     def test_separar_borrador(self):
         meta, texto = li.separar_borrador(
@@ -228,6 +232,171 @@ class CarpetaYRegistro(unittest.TestCase):
             li.anotar_metricas(self.carpeta, "99", {"impresiones": 1})
 
 
+MARCA = """# Marca
+
+estado: en uso
+
+## Nunca nombrar
+
+- Cliente Reservado (NDA)
+
+## Frases prohibidas
+
+- resultados garantizados
+- (instrucción de la plantilla)
+
+## Aviso obligatorio
+
+- Contenido informativo, no constituye asesoría (versión corta).
+
+## Programación
+
+- Zona horaria: America/Bogota
+"""
+
+AVISO = "Contenido informativo, no constituye asesoría (versión corta)."
+
+
+def borrador_pagina(texto, **meta):
+    base = {"destino": "pagina", "idioma": "es", "pilar": "Eventos", "estado": "aprobado",
+            "aprobado_por": "Equipo de eventos", "aprobado_el": "2026-11-12",
+            "programado_para": "2026-11-20 09:30"}
+    base.update({k: v for k, v in meta.items() if v is not None})
+    for k in [k for k, v in meta.items() if v is None]:
+        base.pop(k, None)
+    cabecera = "\n".join("%s: %s" % kv for kv in base.items())
+    return "---\n%s\n---\n\n%s\n\n%s\n\n## Trazabilidad\n\n| a | b |\n" % (cabecera, texto, AVISO)
+
+
+class Marca(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.carpeta = Path(self.tmp.name)
+        li.iniciar(self.carpeta)
+        (self.carpeta / "marca.md").write_text(MARCA, encoding="utf-8")
+        (self.carpeta / "perfil.md").write_text("## Nunca nombrar\n\n- Proyecto Interno\n", encoding="utf-8")
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_plantilla_de_marca_no_trae_reglas(self):
+        plantilla = SKILL / "plantillas" / "marca.md"
+        for seccion in ("Nunca nombrar", "Frases prohibidas", "Aviso obligatorio"):
+            self.assertEqual(li.leer_lista(plantilla, seccion, cortar_nota=False), [], seccion)
+        self.assertEqual(li.leer_campo(plantilla, "Zona horaria"), "")
+
+    def test_reglas_segun_destino(self):
+        nunca, prohibidas, avisos = li.reglas_de_destino(self.carpeta, "perfil")
+        self.assertEqual((nunca, prohibidas, avisos), (["Proyecto Interno"], [], []))
+        nunca, prohibidas, avisos = li.reglas_de_destino(self.carpeta, "pagina")
+        self.assertEqual(nunca, ["Proyecto Interno", "Cliente Reservado"])
+        self.assertEqual(prohibidas, ["resultados garantizados"])
+        self.assertEqual(avisos, [AVISO])
+        self.assertEqual(li.leer_campo(self.carpeta / "marca.md", "Zona horaria"), "America/Bogota")
+
+    def test_frase_prohibida_y_aviso_obligatorio(self):
+        texto = "Ofrecemos Resultados Garantizados en 14 semanas."
+        cods = codigos(texto, prohibidas=["resultados garantizados"], avisos_obligatorios=[AVISO], nivel="error")
+        self.assertIn("R19", cods)
+        self.assertIn("R20", cods)
+        bien = "Redujimos el cierre contable de 14 a 9 días.\n\n" + AVISO.replace(" ", "  ")
+        self.assertEqual(codigos(bien, avisos_obligatorios=[AVISO], nivel="error"), [])
+
+    def test_cli_usa_la_marca_cuando_el_borrador_es_de_pagina(self):
+        b = self.carpeta / "borradores" / "pagina.md"
+        b.write_text(borrador_pagina("Con Cliente Reservado logramos resultados garantizados."), encoding="utf-8")
+        r = subprocess.run([sys.executable, str(SCRIPT), "revisar", str(b), "--json"], capture_output=True,
+                           text=True, env=dict(os.environ, LINKEDIN_SKILL_DIR=str(self.carpeta), PYTHONUTF8="1"))
+        inf = json.loads(r.stdout)
+        self.assertEqual(r.returncode, 1)
+        self.assertEqual(inf["destino"], "pagina")
+        self.assertTrue({"R16", "R19"} <= {h["codigo"] for h in inf["hallazgos"]})
+
+    def test_registrar_pide_aprobacion_en_posts_de_pagina(self):
+        b = self.carpeta / "borradores" / "sin-aprobar.md"
+        b.write_text(borrador_pagina("Abrimos la inscripción al taller del 3 de diciembre.",
+                                     aprobado_por=None, estado="borrador"), encoding="utf-8")
+        with self.assertRaises(SystemExit):
+            li.registrar(self.carpeta, b, url="https://www.linkedin.com/feed/update/9")
+
+
+class Exportacion(unittest.TestCase):
+    AHORA = datetime(2026, 11, 12, 10, 0)
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.carpeta = Path(self.tmp.name)
+        li.iniciar(self.carpeta)
+        (self.carpeta / "marca.md").write_text(MARCA, encoding="utf-8")
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def escribir(self, nombre, contenido):
+        (self.carpeta / "borradores" / nombre).write_text(contenido, encoding="utf-8")
+
+    def preparar(self):
+        return li.preparar_exportacion(self.carpeta, ahora=self.AHORA)
+
+    def test_exporta_solo_lo_aprobado_de_pagina(self):
+        self.escribir("a.md", borrador_pagina("Abrimos la inscripción al taller del 3 de diciembre.",
+                                              enlace="https://ejemplo.com/registro"))
+        self.escribir("b.md", borrador_pagina("Borrador que nadie aprobó todavía.", estado="borrador"))
+        self.escribir("c.md", borrador_pagina("Post personal.", destino="perfil"))
+        piezas, errores, avisos = self.preparar()
+        self.assertEqual(errores, [])
+        self.assertEqual([p["archivo"] for p in piezas], ["a.md"])
+        self.assertEqual(piezas[0]["zona_horaria"], "America/Bogota")
+        self.assertEqual(piezas[0]["aprobado_por"], "Equipo de eventos")
+
+        salida = self.carpeta / "h.csv"
+        li.escribir_hootsuite(piezas, salida, "dmy")
+        filas = list(csv.reader(salida.open(encoding="utf-8")))
+        self.assertEqual(len(filas), 1)
+        self.assertEqual(filas[0][0], "20/11/2026 09:30")
+        self.assertTrue(filas[0][1].startswith("Abrimos la inscripción"))
+        self.assertEqual(filas[0][2], "https://ejemplo.com/registro")
+
+    def test_cada_regla_de_hootsuite(self):
+        self.escribir("sin-aprobador.md", borrador_pagina("Uno.", aprobado_por=None))
+        self.escribir("minuto.md", borrador_pagina("Dos, con su dato de 12 sesiones.", programado_para="2026-11-21 09:32"))
+        self.escribir("pronto.md", borrador_pagina("Tres, con su dato de 4 ponentes.", programado_para="2026-11-12 10:10"))
+        self.escribir("mismo-horario-1.md", borrador_pagina("Cuatro, con 30 cupos.", programado_para="2026-11-22 08:00"))
+        self.escribir("mismo-horario-2.md", borrador_pagina("Cinco, con 2 sedes.", programado_para="2026-11-22 08:00"))
+        self.escribir("dup-1.md", borrador_pagina("Texto repetido con 3 datos.", programado_para="2026-11-23 08:00"))
+        self.escribir("dup-2.md", borrador_pagina("Texto  repetido con 3 datos.", programado_para="2026-11-24 08:00"))
+        self.escribir("revisor.md", borrador_pagina("En resumen, resultados garantizados.", programado_para="2026-11-25 08:00"))
+        self.escribir("imagen.md", borrador_pagina("Seis, con 5 talleres.", programado_para="2026-11-26 08:00")
+                      + "\n## Imagen\n\nUna foto del taller.\n")
+        _, errores, avisos = self.preparar()
+        texto = "\n".join(errores)
+        self.assertIn("sin-aprobador.md: falta aprobado_por", texto)
+        self.assertIn("minuto.md: Hootsuite pide minutos terminados en 0 o 5", texto)
+        self.assertIn("pronto.md", texto)
+        self.assertIn("mismo-horario-1.md y mismo-horario-2.md: misma hora", texto)
+        self.assertIn("dup-1.md y dup-2.md: mismo texto", texto)
+        self.assertIn("revisor.md: no pasa el revisor (R03, R19)", texto)
+        self.assertTrue(any(a.startswith("imagen.md") for a in avisos))
+
+    def test_todo_o_nada_desde_la_linea_de_comandos(self):
+        self.escribir("bien.md", borrador_pagina("Abrimos la inscripción al taller del 3 de diciembre.",
+                                                 programado_para="2030-01-15 09:30"))
+        self.escribir("mal.md", borrador_pagina("Otro post de 2 líneas.", programado_para="2030-01-15 09:31"))
+        env = dict(os.environ, LINKEDIN_SKILL_DIR=str(self.carpeta), PYTHONUTF8="1")
+        r = subprocess.run([sys.executable, str(SCRIPT), "exportar"], capture_output=True, text=True, env=env)
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertFalse((self.carpeta / "exportaciones").exists())
+        (self.carpeta / "borradores" / "mal.md").unlink()
+        salida = self.carpeta / "lista.json"
+        r = subprocess.run([sys.executable, str(SCRIPT), "exportar", "--formato", "json", "--salida", str(salida)],
+                           capture_output=True, text=True, env=env)
+        self.assertEqual(r.returncode, 0, r.stdout)
+        datos = json.loads(salida.read_text(encoding="utf-8"))
+        self.assertEqual(datos[0]["programado_para"], "2030-01-15T09:30")
+        self.assertEqual(set(datos[0]), {"archivo", "programado_para", "zona_horaria", "texto", "enlace", "pilar",
+                                         "formato", "tipo_pieza", "aprobado_por", "aprobado_el", "lleva_imagen"})
+
+
 class LineaDeComandos(unittest.TestCase):
     def correr(self, *args, entrada=None, env_extra=None):
         env = dict(os.environ, **(env_extra or {}))
@@ -273,15 +442,28 @@ class Repositorio(unittest.TestCase):
             self.assertEqual(errores, [], p)
 
     def test_manifiestos_y_versiones(self):
-        plugin = json.loads((RAIZ / "plugins/linkedin/.claude-plugin/plugin.json").read_text(encoding="utf-8"))
-        market = json.loads((RAIZ / ".claude-plugin/marketplace.json").read_text(encoding="utf-8"))
+        leer = lambda r: json.loads((RAIZ / r).read_text(encoding="utf-8"))
+        claude = leer("plugins/linkedin/.claude-plugin/plugin.json")
+        portable = leer("plugins/linkedin/plugin.json")
+        market_claude = leer(".claude-plugin/marketplace.json")
+        market_codex = leer(".agents/plugins/marketplace.json")
         skill = (SKILL / "SKILL.md").read_text(encoding="utf-8")
         version_skill = re.search(r'^version:\s*"([^"]+)"', skill, re.M).group(1)
         version_log = re.search(r"^## \[([^\]]+)\]", (RAIZ / "CHANGELOG.md").read_text(encoding="utf-8"), re.M).group(1)
-        self.assertEqual(plugin["version"], version_skill)
-        self.assertEqual(plugin["version"], version_log)
-        self.assertEqual(market["plugins"][0]["source"], "./plugins/linkedin")
-        self.assertEqual(market["plugins"][0]["name"], plugin["name"])
+        self.assertEqual({claude["version"], portable["version"], version_skill, version_log}, {version_log})
+        self.assertEqual(claude["name"], portable["name"])
+        self.assertEqual(claude["description"], portable["description"])
+        self.assertTrue(portable["$schema"].startswith("https://agent-plugins.org/schemas/"))
+        self.assertEqual(market_claude["name"], market_codex["name"])
+        self.assertEqual(market_claude["plugins"][0]["source"], "./plugins/linkedin")
+        self.assertEqual(market_claude["plugins"][0]["name"], claude["name"])
+        entrada = market_codex["plugins"][0]
+        self.assertEqual(entrada["name"], portable["name"])
+        self.assertEqual(entrada["source"], {"source": "local", "path": "./plugins/linkedin"})
+        self.assertTrue((RAIZ / entrada["source"]["path"]).is_dir())
+        self.assertTrue({"installation", "authentication"} <= set(entrada["policy"]))
+        self.assertIn("category", entrada)
+        self.assertTrue((SKILL / "agents" / "openai.yaml").exists())
 
     def test_descripcion_de_la_skill(self):
         skill = (SKILL / "SKILL.md").read_text(encoding="utf-8")
@@ -298,7 +480,7 @@ class Repositorio(unittest.TestCase):
 
     def test_datos_personales_fuera_del_repo(self):
         ignorados = (RAIZ / ".gitignore").read_text(encoding="utf-8")
-        for patron in ("perfil.local.md", "registro.csv", "borradores/"):
+        for patron in ("perfil.local.md", "marca.local.md", "registro.csv", "borradores/", "exportaciones/"):
             self.assertIn(patron, ignorados)
 
 

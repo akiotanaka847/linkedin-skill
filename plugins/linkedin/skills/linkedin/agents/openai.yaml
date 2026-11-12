@@ -1,0 +1,7 @@
+interface:
+  display_name: "LinkedIn"
+  short_description: "Posts, comentarios y página de empresa a partir de casos reales"
+  brand_color: "#0A66C2"
+  default_prompt: "Escribe, revisa o planea contenido de LinkedIn a partir de mis casos reales."
+policy:
+  allow_implicit_invocation: true

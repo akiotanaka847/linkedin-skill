@@ -1,7 +1,7 @@
 {
   "name": "linkedin",
-  "version": "1.0.0",
-  "description": "Contenido de LinkedIn para profesionales de marketing y tecnología, en español e inglés. Banco de historias reales con cifra y fuente, posts a partir de un caso, revisor que bloquea muletillas, rayas, barras y nombres confidenciales, calendario por pilares, comentarios, perfil, embajadores y vacantes, y registro de métricas. La skill redacta; la persona publica.",
+  "version": "1.1.0",
+  "description": "Contenido de LinkedIn para profesionales y equipos de marketing, en español e inglés. Banco de historias reales con cifra y fuente, posts a partir de un caso, revisor que bloquea muletillas, rayas, barras y nombres confidenciales, calendario, comentarios, perfil, página de empresa con aprobación por rol y exportación a Hootsuite, y registro de métricas. La skill redacta; la persona publica.",
   "author": {
     "name": "Akio Tanaka"
   },
@@ -15,6 +15,7 @@
     "copywriting",
     "personal-branding",
     "employee-advocacy",
+    "hootsuite",
     "espanol",
     "spanish"
   ]

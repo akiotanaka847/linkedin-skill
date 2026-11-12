@@ -63,6 +63,30 @@ dispositivo y del ancho de pantalla, así que el revisor muestra los primeros 21
 caracteres como aproximación. Lo que importa: la primera línea tiene que
 sostenerse sola.
 
+## Carga masiva en Hootsuite
+
+`linkedin.py exportar --formato hootsuite` sigue lo que describe la ayuda de
+Hootsuite para el Bulk Composer:
+
+- Columna A: fecha y hora en formato de 24 horas, con un mismo formato de fecha
+  en todo el archivo (día, mes y año; mes, día y año; o año, mes y día).
+- Columna B: el texto del post.
+- Columna C: un enlace completo, opcional.
+- Los saltos de línea del post viajan dentro de comillas, como manda el
+  formato CSV. En la primera carga, confirma que Hootsuite los conserva.
+- Minutos terminados en 0 o 5, un post por horario y sin posts duplicados.
+- Hasta 350 posts por archivo y sin imágenes: se agregan en Hootsuite después.
+- Al menos 20 minutos en el futuro. La versión anterior de la misma ayuda decía
+  10; el script usa 20.
+- La ayuda recomienda Google Sheets sobre Excel, que puede guardar el año con dos
+  cifras.
+
+Fuente: `https://help.hootsuite.com/hc/en-us/articles/1260804249930` ("Bulk
+schedule your posts") y su versión anterior, la 204585120. El 12 de noviembre de
+2026 la ayuda pedía iniciar sesión para leerla completa, así que el detalle salió
+del texto indexado. Antes de la primera carga, compara el archivo con la
+plantilla que descarga el propio Bulk Composer.
+
 ## Lo que esta skill no afirma
 
 - **Horarios óptimos.** Los estudios que circulan miden el público de otras

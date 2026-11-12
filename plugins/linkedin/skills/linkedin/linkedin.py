@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
 """Herramienta de la skill /linkedin.
 
-Tres trabajos deterministas que el agente no debe hacer a ojo:
-  1. La carpeta de datos (perfil, banco de historias, calendario, borradores, registro).
+Cuatro trabajos deterministas que el agente no debe hacer a ojo:
+  1. La carpeta de datos (perfil, marca, banco de historias, calendario, borradores, registro).
   2. La revisión de un borrador: rayas, barras, muletillas, contrastes de póster,
-     nombres que no pueden salir, cifras que hay que trazar.
-  3. El registro de lo publicado y el resumen de sus métricas.
+     nombres que no pueden salir, frases que la marca prohíbe, avisos obligatorios,
+     cifras que hay que trazar.
+  3. La exportación de lo aprobado para la página de empresa (CSV de Hootsuite o JSON
+     para otro agente), con la aprobación como condición.
+  4. El registro de lo publicado y el resumen de sus métricas.
 
 Solo biblioteca estándar. Python 3.9 o superior.
 """
@@ -18,14 +21,21 @@ import re
 import shutil
 import statistics
 import sys
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 SKILL_DIR = Path(__file__).resolve().parent
 PLANTILLAS = SKILL_DIR / "plantillas"
 MULETILLAS = SKILL_DIR / "muletillas.json"
 
-ARCHIVOS_PLANTILLA = ("perfil.md", "banco-de-historias.md", "calendario.md")
+ARCHIVOS_PLANTILLA = ("perfil.md", "marca.md", "banco-de-historias.md", "calendario.md")
+
+# Carga masiva de Hootsuite (Bulk Composer), según su ayuda: columna A fecha y hora,
+# B texto, C enlace opcional; minutos terminados en 0 o 5; un post por horario; sin
+# duplicados; hasta 350 filas; sin imágenes. La ayuda vigente pide 20 minutos de margen.
+HOOTSUITE_MAX = 350
+HOOTSUITE_MARGEN_MIN = 20
+FORMATOS_FECHA = {"dmy": "%d/%m/%Y %H:%M", "mdy": "%m/%d/%Y %H:%M", "ymd": "%Y/%m/%d %H:%M"}
 
 # Límites de referencia. El post sale del editor de LinkedIn; los otros tres son de
 # guías de terceros (ver referencias/linkedin.md). El editor siempre tiene la última palabra.
@@ -40,7 +50,7 @@ SEMIRRAYA = "\u2013"
 COLUMNAS = [
     "id", "fecha", "idioma", "pilar", "formato", "caracteres", "primera_linea", "url", "archivo",
     "impresiones", "alcance", "reacciones", "comentarios", "compartidos", "guardados", "envios",
-    "visitas_perfil", "seguidores", "medido_el",
+    "visitas_perfil", "seguidores", "medido_el", "destino",
 ]
 METRICAS = ["impresiones", "alcance", "reacciones", "comentarios", "compartidos", "guardados",
             "envios", "visitas_perfil", "seguidores"]
@@ -108,20 +118,59 @@ def contar_historias(ruta):
     return total
 
 
-def leer_nunca_nombrar(ruta):
-    """Lee la lista '## Nunca nombrar' del perfil: un nombre por viñeta."""
+def leer_lista(ruta, seccion, cortar_nota=True):
+    """Lee las viñetas de una sección '## <seccion>' de un perfil o de la marca.
+
+    Las viñetas que empiezan con '(' son instrucciones de la plantilla y se saltan. Con
+    cortar_nota, lo que va después de ' (' es una nota y no forma parte del valor.
+    """
     if not ruta or not Path(ruta).exists():
         return []
-    nombres, dentro = [], False
+    valores, dentro = [], False
+    patron = re.compile(r"^#+\s*" + re.escape(seccion) + r"\b", re.I)
     for linea in Path(ruta).read_text(encoding="utf-8").splitlines():
         if re.match(r"^#+\s", linea):
-            dentro = bool(re.match(r"^#+\s*nunca nombrar\b", linea, re.I))
+            dentro = bool(patron.match(linea))
             continue
         if dentro and linea.strip().startswith("- "):
-            nombre = linea.strip()[2:].split(" (")[0].strip()
-            if nombre and not nombre.startswith("(") and nombre not in ("...", "…"):
-                nombres.append(nombre)
-    return nombres
+            valor = linea.strip()[2:].strip()
+            if cortar_nota:
+                valor = valor.split(" (")[0].strip()
+            if valor and not valor.startswith("(") and valor not in ("...", "…"):
+                valores.append(valor)
+    return valores
+
+
+def leer_nunca_nombrar(ruta):
+    """La lista '## Nunca nombrar': un nombre por viñeta."""
+    return leer_lista(ruta, "Nunca nombrar")
+
+
+def leer_campo(ruta, campo):
+    """El valor de una línea '- <campo>: valor' en cualquier parte del archivo."""
+    if not ruta or not Path(ruta).exists():
+        return ""
+    m = re.search(r"^-\s*" + re.escape(campo) + r":[ \t]*(.*)$",
+                  Path(ruta).read_text(encoding="utf-8"), re.I | re.M)
+    valor = m.group(1).strip() if m else ""
+    return "" if valor.startswith("(") else valor
+
+
+def reglas_de_destino(carpeta, destino, perfil=None, marca=None):
+    """Listas que aplican según a nombre de quién sale el post.
+
+    Un post de página suma la lista Nunca nombrar de la persona y la de la marca, y
+    además las frases prohibidas y los avisos obligatorios de la marca.
+    """
+    perfil = Path(perfil) if perfil else carpeta / "perfil.md"
+    nunca = leer_nunca_nombrar(perfil)
+    prohibidas, avisos = [], []
+    if destino == "pagina":
+        marca = Path(marca) if marca else carpeta / "marca.md"
+        nunca += [n for n in leer_nunca_nombrar(marca) if n not in nunca]
+        prohibidas = leer_lista(marca, "Frases prohibidas")
+        avisos = leer_lista(marca, "Aviso obligatorio", cortar_nota=False)
+    return nunca, prohibidas, avisos
 
 
 # ---------------------------------------------------------------------------
@@ -245,7 +294,7 @@ ETIQUETAS = [
 EMOJI = re.compile("[\U0001F300-\U0001FAFF\U00002600-\U000027BF\U0001F000-\U0001F2FF⭐⬆↔-↪]")
 
 CIFRA = re.compile(
-    r"(?<![\w.,])\d+(?:[.,]\d+)*(?:\s?%|\s?(?:x|veces|ms|s|seg|min|h|horas|d[ií]as|semanas|meses|a[nñ]os|"
+    r"(?<![\w.,])\d+(?:[.,]\d+)*(?:\s?%|\s?(?:x|veces|times|ms|s|seg|minutos|minutes|min|h|horas|hours|d[ií]as|days|semanas|weeks|meses|months|a[nñ]os|years|"
     r"USD|COP|EUR|k|M|MB|GB|KB|px|fps)\b)?")
 
 TRIADA = re.compile(
@@ -253,7 +302,8 @@ TRIADA = re.compile(
     + PALABRA + r"(?: " + PALABRA + r")?\b", re.I)
 
 
-def revisar(texto, tipo="post", idioma="auto", nunca=(), reglas_muletillas=None):
+def revisar(texto, tipo="post", idioma="auto", nunca=(), reglas_muletillas=None,
+            prohibidas=(), avisos_obligatorios=()):
     """Revisa un texto y devuelve un informe con hallazgos ordenables por severidad."""
     if tipo not in LIMITES:
         raise ValueError("tipo desconocido: %s" % tipo)
@@ -314,6 +364,21 @@ def revisar(texto, tipo="post", idioma="auto", nunca=(), reglas_muletillas=None)
             columna = m.start() - (plano.rfind("\n", 0, m.start()) + 1)
             agregar("R16", "error", "'%s' está en 'Nunca nombrar' del perfil." % nombre, n,
                     _fragmento(lineas[n - 1], columna, columna + len(m.group(0))))
+
+    # R19 frases que la marca prohíbe (cumplimiento, promesas, claims sin respaldo)
+    for frase in prohibidas:
+        for m in re.finditer(r"(?<!\w)" + re.escape(frase) + r"(?!\w)", plano, re.I):
+            n = plano.count("\n", 0, m.start()) + 1
+            columna = m.start() - (plano.rfind("\n", 0, m.start()) + 1)
+            agregar("R19", "error", "'%s' está en 'Frases prohibidas' de la marca." % frase, n,
+                    _fragmento(lineas[n - 1], columna, columna + len(m.group(0))))
+
+    # R20 avisos obligatorios de la marca (por ejemplo, un aviso legal)
+    if tipo == "post" and avisos_obligatorios:
+        normal = re.sub(r"\s+", " ", texto).lower()
+        for aviso in avisos_obligatorios:
+            if re.sub(r"\s+", " ", aviso).lower() not in normal:
+                agregar("R20", "error", "Falta el aviso obligatorio de la marca: «%s»" % aviso[:120])
 
     visibles = [l for l in lineas if l.strip()]
     caracteres = len(texto)
@@ -457,6 +522,9 @@ def registrar(carpeta, archivo, url="", fecha=None, pilar=None, formato=None, id
     if not ruta.exists():
         raise SystemExit("No hay registro.csv. Corre primero: linkedin.py iniciar")
     meta, texto = separar_borrador(Path(archivo).read_text(encoding="utf-8"))
+    destino = meta.get("destino", "perfil")
+    if destino == "pagina" and not (meta.get("aprobado_por") and meta.get("aprobado_el")):
+        raise SystemExit("Un post de página necesita aprobado_por y aprobado_el en el borrador.")
     filas = leer_registro(ruta)
     if url and any(f["url"] == url for f in filas):
         raise SystemExit("Esa URL ya está en el registro.")
@@ -472,10 +540,82 @@ def registrar(carpeta, archivo, url="", fecha=None, pilar=None, formato=None, id
         "primera_linea": primera[:120],
         "url": url,
         "archivo": str(Path(archivo).resolve()),
+        "destino": destino,
     }
     filas.append(fila)
     escribir_registro(ruta, filas)
     return fila
+
+
+# ---------------------------------------------------------------------------
+# Exportación de lo aprobado para la página de empresa
+# ---------------------------------------------------------------------------
+
+def preparar_exportacion(carpeta, ahora=None, marca=None, perfil=None):
+    """Junta los borradores de página aprobados y los valida. Todo o nada.
+
+    Devuelve (piezas, errores, avisos). Si hay errores no se exporta ninguna pieza:
+    una carga a medias deja el calendario de la página en un estado que nadie revisó.
+    """
+    ahora = ahora or datetime.now()
+    nunca, prohibidas, avisos_marca = reglas_de_destino(carpeta, "pagina", perfil, marca)
+    piezas, errores, avisos = [], [], []
+    for ruta in sorted((carpeta / "borradores").glob("*.md")):
+        contenido = ruta.read_text(encoding="utf-8")
+        meta, texto = separar_borrador(contenido)
+        if meta.get("destino") != "pagina" or meta.get("estado") != "aprobado":
+            continue
+        nombre = ruta.name
+        if not (meta.get("aprobado_por") and meta.get("aprobado_el")):
+            errores.append("%s: falta aprobado_por o aprobado_el." % nombre)
+            continue
+        try:
+            cuando = datetime.strptime(meta.get("programado_para", ""), "%Y-%m-%d %H:%M")
+        except ValueError:
+            errores.append("%s: programado_para debe ser AAAA-MM-DD HH:MM, en la hora de la página." % nombre)
+            continue
+        if cuando.minute % 5:
+            errores.append("%s: Hootsuite pide minutos terminados en 0 o 5 (%s)." % (nombre, cuando.strftime("%H:%M")))
+        if cuando < ahora + timedelta(minutes=HOOTSUITE_MARGEN_MIN):
+            errores.append("%s: %s queda a menos de %d minutos de ahora." % (
+                nombre, cuando.strftime("%Y-%m-%d %H:%M"), HOOTSUITE_MARGEN_MIN))
+        inf = revisar(texto, "post", meta.get("idioma", "auto"), nunca,
+                      prohibidas=prohibidas, avisos_obligatorios=avisos_marca)
+        if inf["errores"]:
+            codigos = sorted({h["codigo"] for h in inf["hallazgos"] if h["nivel"] == "error"})
+            errores.append("%s: no pasa el revisor (%s)." % (nombre, ", ".join(codigos)))
+        if re.search(r"^##\s+imagen\b", contenido, re.I | re.M):
+            avisos.append("%s: la carga masiva no lleva imágenes; agrégala en Hootsuite después de subir el archivo." % nombre)
+        piezas.append({
+            "archivo": nombre, "programado_para": cuando.strftime("%Y-%m-%dT%H:%M"),
+            "zona_horaria": leer_campo(Path(marca) if marca else carpeta / "marca.md", "Zona horaria"),
+            "texto": texto, "enlace": meta.get("enlace", ""), "pilar": meta.get("pilar", ""),
+            "formato": meta.get("formato", ""), "tipo_pieza": meta.get("tipo_pieza", ""),
+            "aprobado_por": meta["aprobado_por"], "aprobado_el": meta["aprobado_el"],
+            "lleva_imagen": bool(re.search(r"^##\s+imagen\b", contenido, re.I | re.M)),
+        })
+    vistos, textos = {}, {}
+    for pz in piezas:
+        if pz["programado_para"] in vistos:
+            errores.append("%s y %s: misma hora; Hootsuite admite un post por horario." % (
+                vistos[pz["programado_para"]], pz["archivo"]))
+        vistos.setdefault(pz["programado_para"], pz["archivo"])
+        clave = re.sub(r"\s+", " ", pz["texto"]).strip().lower()
+        if clave in textos:
+            errores.append("%s y %s: mismo texto; Hootsuite rechaza duplicados." % (textos[clave], pz["archivo"]))
+        textos.setdefault(clave, pz["archivo"])
+    if len(piezas) > HOOTSUITE_MAX:
+        errores.append("%d piezas; Hootsuite acepta hasta %d por archivo." % (len(piezas), HOOTSUITE_MAX))
+    return piezas, errores, avisos
+
+
+def escribir_hootsuite(piezas, salida, formato_fecha="dmy"):
+    """CSV para el Bulk Composer: A fecha y hora (24 h), B texto, C enlace. Sin encabezado."""
+    with Path(salida).open("w", newline="", encoding="utf-8") as f:
+        w = csv.writer(f)
+        for pz in sorted(piezas, key=lambda p: p["programado_para"]):
+            cuando = datetime.strptime(pz["programado_para"], "%Y-%m-%dT%H:%M")
+            w.writerow([cuando.strftime(FORMATOS_FECHA[formato_fecha]), pz["texto"], pz["enlace"]])
 
 
 def anotar_metricas(carpeta, id_post, valores, fecha=None):
@@ -587,7 +727,17 @@ def main(argv=None):
     pr.add_argument("--tipo", choices=sorted(LIMITES), default="post")
     pr.add_argument("--idioma", choices=["auto", "es", "en"], default="auto")
     pr.add_argument("--perfil", help="Perfil con la lista 'Nunca nombrar'. Por defecto, el de la carpeta de datos.")
+    pr.add_argument("--marca", help="Perfil de marca. Por defecto, marca.md de la carpeta de datos.")
+    pr.add_argument("--destino", choices=["perfil", "pagina"],
+                    help="A nombre de quién sale. Por defecto, el 'destino' del borrador o 'perfil'.")
     pr.add_argument("--json", action="store_true")
+
+    pe = sub.add_parser("exportar", help="Exporta los posts de página aprobados (CSV de Hootsuite o JSON).")
+    pe.add_argument("--formato", choices=["hootsuite", "json"], default="hootsuite")
+    pe.add_argument("--formato-fecha", choices=sorted(FORMATOS_FECHA), default="dmy",
+                    help="El mismo que elijas al subir el archivo a Hootsuite.")
+    pe.add_argument("--salida", help="Archivo de salida. Por defecto, en exportaciones/ de la carpeta de datos.")
+    pe.add_argument("--marca", help="Perfil de marca. Por defecto, marca.md de la carpeta de datos.")
 
     pg = sub.add_parser("registrar", help="Anota un post publicado en registro.csv.")
     pg.add_argument("archivo", help="El borrador aprobado.")
@@ -624,22 +774,52 @@ def main(argv=None):
         r = resumir(filas)
         print("Carpeta de datos: %s" % carpeta)
         print("perfil.md               %s" % ("vacío" if plantilla_vacia(carpeta / "perfil.md") else "en uso"))
+        print("marca.md                %s" % ("vacío" if plantilla_vacia(carpeta / "marca.md") else "en uso"))
         print("banco-de-historias.md   %s, %d historias" % (
             "vacío" if plantilla_vacia(carpeta / "banco-de-historias.md") else "en uso",
             contar_historias(carpeta / "banco-de-historias.md")))
-        print("borradores/             %d archivos" % len(list((carpeta / "borradores").glob("*.md"))))
+        n_b = len(list((carpeta / "borradores").glob("*.md")))
+        print("borradores/             %d archivo%s" % (n_b, "" if n_b == 1 else "s"))
         print("registro.csv            %d publicados, %d pendientes de medir" % (len(filas), len(r["pendientes"])))
-        print("Nunca nombrar           %d nombres" % len(leer_nunca_nombrar(carpeta / "perfil.md")))
+        print("Nunca nombrar           %d en el perfil, %d en la marca" % (
+            len(leer_nunca_nombrar(carpeta / "perfil.md")), len(leer_nunca_nombrar(carpeta / "marca.md"))))
     elif a.cmd == "revisar":
         contenido = sys.stdin.read() if a.archivo == "-" else Path(a.archivo).read_text(encoding="utf-8")
-        _, texto = separar_borrador(contenido) if a.tipo != "doc" else ({}, contenido)
-        perfil = Path(a.perfil) if a.perfil else carpeta / "perfil.md"
-        inf = revisar(texto, a.tipo, a.idioma, leer_nunca_nombrar(perfil))
+        meta, texto = separar_borrador(contenido) if a.tipo != "doc" else ({}, contenido)
+        destino = a.destino or meta.get("destino") or "perfil"
+        nunca, prohibidas, avisos = reglas_de_destino(carpeta, destino, a.perfil, a.marca)
+        inf = revisar(texto, a.tipo, a.idioma, nunca, prohibidas=prohibidas, avisos_obligatorios=avisos)
+        inf["destino"] = destino
         if a.json:
             print(json.dumps(inf, ensure_ascii=False, indent=2))
         else:
             imprimir_informe(inf)
         return 1 if inf["errores"] else 0
+    elif a.cmd == "exportar":
+        piezas, errores, avisos = preparar_exportacion(carpeta, marca=a.marca)
+        for av in avisos:
+            print("AVISO  " + av)
+        if errores:
+            for e in errores:
+                print("ERROR  " + e)
+            print("\nNo se exportó nada: corrige los errores y vuelve a correr el comando.")
+            return 1
+        if not piezas:
+            print("No hay posts de página con estado: aprobado.")
+            return 0
+        sello = datetime.now().strftime("%Y%m%d-%H%M")
+        if a.salida:
+            salida = Path(a.salida)
+        else:
+            (carpeta / "exportaciones").mkdir(exist_ok=True)
+            salida = carpeta / "exportaciones" / ("%s-%s.%s" % (
+                a.formato, sello, "csv" if a.formato == "hootsuite" else "json"))
+        if a.formato == "hootsuite":
+            escribir_hootsuite(piezas, salida, a.formato_fecha)
+        else:
+            salida.write_text(json.dumps(piezas, ensure_ascii=False, indent=2), encoding="utf-8")
+        print("%d post%s exportado%s a %s" % (len(piezas), "" if len(piezas) == 1 else "s",
+                                             "" if len(piezas) == 1 else "s", salida))
     elif a.cmd == "registrar":
         fila = registrar(carpeta, a.archivo, a.url, a.fecha, a.pilar, a.formato, a.idioma)
         print("Registrado #%s del %s: %s" % (fila["id"], fila["fecha"], fila["primera_linea"][:70]))

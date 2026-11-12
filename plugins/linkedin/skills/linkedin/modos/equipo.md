@@ -44,7 +44,8 @@ El revisor bloquea `rockstar`, `ninja` y `ambiente joven y dinámico`.
 - Un reconocimiento a una persona va con el formato F8, con su nombre y su
   permiso. Antes de publicar, la persona reconocida lee el texto.
 - La página de la empresa y tu perfil cuentan lo mismo de forma distinta: la
-  página da el hecho; tu perfil cuenta lo que viste de cerca.
+  página da el hecho; tu perfil cuenta lo que viste de cerca. El post de la
+  página se trabaja en `modos/marca.md`.
 
 ## Lo que no hace este modo
 

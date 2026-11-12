@@ -21,8 +21,10 @@ FIN
 ```
 
 Tipos: `post`, `comentario`, `titular`, `acerca`, `doc`. El script lee la lista
-Nunca nombrar del perfil; para otro perfil, `--perfil <ruta>`. Sale con código 1
-si hay errores.
+Nunca nombrar del perfil; para otro perfil, `--perfil <ruta>`. Si el borrador
+dice `destino: pagina` (o pasas `--destino pagina`), suma la lista de la marca y
+aplica sus frases prohibidas y su aviso obligatorio. Sale con código 1 si hay
+errores.
 
 | Código | Qué busca | Nivel |
 |---|---|---|
@@ -42,6 +44,8 @@ si hay errores.
 | R16 | Un nombre de la lista Nunca nombrar | error |
 | R17 | Más de una exclamación | aviso |
 | R18 | Línea en mayúsculas | aviso |
+| R19 | Una frase de la lista Frases prohibidas de la marca | error |
+| R20 | Falta el aviso obligatorio de la marca | error |
 
 El script también lista las cifras que encontró y lo que se ve antes de "ver
 más". Lo que va entre comillas invertidas se ignora, para poder citar una

@@ -51,6 +51,13 @@ Luego:
   (`modos/resultados.md`). Siempre a los siete días, para que los posts se
   puedan comparar.
 
+## Posts de página
+
+Si el borrador dice `destino: pagina`, la aprobación es la del equipo que indica
+`marca.md` y la salida es Hootsuite: sigue `modos/marca.md` (aprobación por rol y
+`LI exportar`). `LI registrar` rechaza un post de página sin `aprobado_por` y
+`aprobado_el`.
+
 ## Si la persona se arrepiente
 
 Antes de publicar, no pasa nada. Después, la persona edita o borra el post en

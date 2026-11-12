@@ -1,6 +1,6 @@
 # linkedin-skill
 
-**Skills para Claude Code, empezando por LinkedIn: `/linkedin`.**
+**Skills para Claude Code y Codex, empezando por LinkedIn: `/linkedin`.**
 
 `/linkedin` escribe, revisa y lleva la cuenta de lo que publicas en LinkedIn a
 partir de casos reales: el número que te sorprendió, lo que se rompió, lo que
@@ -15,6 +15,8 @@ bots para publicar, comentar o reaccionar.
 
 ## Instalación
 
+### Claude Code
+
 ```bash
 /plugin marketplace add akiotanaka847/linkedin-skill
 /plugin install linkedin@linkedin-skill
@@ -28,13 +30,33 @@ git clone https://github.com/akiotanaka847/linkedin-skill.git
 cp -r linkedin-skill/plugins/linkedin/skills/linkedin ~/.claude/skills/
 ```
 
+### Codex
+
+```bash
+codex plugin marketplace add akiotanaka847/linkedin-skill
+codex plugin add linkedin@linkedin-skill
+```
+
+También se instala desde `/plugins` dentro de Codex. Abre una sesión nueva después
+de instalar y menciónala con `$` (aparece como `linkedin:linkedin`). Sin plugin,
+copia la carpeta de la skill a `~/.agents/skills/`.
+
+El sandbox de Codex solo escribe en la carpeta de trabajo. Para que la skill
+guarde tu perfil y tus borradores, aprueba la escritura la primera vez o agrega la
+carpeta de datos a `~/.codex/config.toml`:
+
+```toml
+[sandbox_workspace_write]
+writable_roots = ["/Users/tu-usuario/.config/linkedin-skill"]
+```
+
 Requiere Python 3.9 o superior, sin dependencias.
 
 ## SKILLS
 
 | Skill | Qué hace | Docs |
 |---|---|---|
-| [`/linkedin`](plugins/linkedin/skills/linkedin/SKILL.md) | Banco de historias, posts a partir de un caso, revisión, calendario, comentarios, perfil, equipo y métricas | [diseño](implementation/linkedin-diseno.md) |
+| [`/linkedin`](plugins/linkedin/skills/linkedin/SKILL.md) | Banco de historias, posts a partir de un caso, revisión, calendario, comentarios, perfil, equipo, página de empresa y métricas | [diseño](implementation/linkedin-diseno.md), [agentes](implementation/integracion-con-agentes.md) |
 
 ## Modos
 
@@ -47,6 +69,7 @@ Requiere Python 3.9 o superior, sin dependencias.
 | `comentar` | Dos opciones de comentario para un post ajeno, o respuestas ordenadas para los comentarios en los tuyos |
 | `perfil` | Titular, Acerca de, experiencia y destacados, respaldados por el banco |
 | `equipo` | Kit para embajadores (sin textos para copiar), vacantes con nivel de inglés y rango, reconocimientos con permiso |
+| `marca` | Página de empresa: voz sacada de la guía de marca, artículos convertidos en posts, series de eventos, aprobación por rol y exportación a Hootsuite |
 | `publicar` | Aprobación del texto exacto, paquete para pegar o programar en LinkedIn, registro |
 | `resultados` | Métricas a los siete días y medianas por pilar, formato e idioma |
 
@@ -60,7 +83,7 @@ Requiere Python 3.9 o superior, sin dependencias.
    que ninguna se escape.
 3. **Confidencialidad de agencia.** La lista Nunca nombrar del perfil bloquea el
    borrador. Clientes, nombres internos y lo dicho en reuniones quedan fuera.
-4. **Un revisor que se puede leer.** `linkedin.py revisar` aplica 16 reglas con
+4. **Un revisor que se puede leer.** `linkedin.py revisar` aplica 18 reglas con
    código, nivel y sugerencia. Las muletillas viven en
    [`muletillas.json`](plugins/linkedin/skills/linkedin/muletillas.json), en
    español e inglés, y las puedes cambiar.
@@ -68,6 +91,10 @@ Requiere Python 3.9 o superior, sin dependencias.
    multiplicadores de alcance de estudios ajenos. Con diez posts medidos,
    `resumen` te dice qué te funciona a ti, y no concluye nada con menos de cinco
    posts por grupo.
+6. **Equipos de marketing.** La página de empresa tiene su propio perfil de marca
+   con frases que cumplimiento no permite y avisos que van siempre. Cada post de
+   página lleva quién lo aprobó y cuándo; sin eso, `exportar` no arma el CSV de
+   Hootsuite y `registrar` no lo anota.
 
 ## Uso rápido
 
@@ -97,9 +124,11 @@ En `~/.config/linkedin-skill/`, fuera del repositorio:
 
 ```
 perfil.md                Quién eres, a quién le escribes, pilares, Nunca nombrar
+marca.md                 La página de empresa: voz, aprobación, frases prohibidas, aviso obligatorio
 banco-de-historias.md    Tus casos con cifra, fecha, fuente y si son publicables
 calendario.md            Las próximas semanas
 borradores/              Un archivo por post, con su trazabilidad
+exportaciones/           Los CSV para Hootsuite y los JSON para otros agentes
 registro.csv             Lo publicado y sus métricas
 ```
 
@@ -116,6 +145,15 @@ python3 plugins/linkedin/skills/linkedin/linkedin.py revisar - --tipo comentario
 ```
 
 Sale con código 1 si hay errores, así que sirve en un hook o en CI.
+
+## Dentro de otro agente
+
+Si tu equipo ya tiene un agente de marketing en Python, el revisor y la
+exportación funcionan como herramientas deterministas, sin la conversación de la
+skill: el agente redacta, `revisar --json` devuelve los hallazgos, una persona
+aprueba y `exportar --formato json` entrega lo aprobado a la herramienta que
+programa. El contrato está en
+[integracion-con-agentes.md](implementation/integracion-con-agentes.md).
 
 ## Tests
 

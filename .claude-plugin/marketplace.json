@@ -1,7 +1,7 @@
 {
   "name": "linkedin-skill",
   "metadata": {
-    "description": "Skills propias para Claude Code. /linkedin escribe, revisa y lleva la cuenta de tu contenido en LinkedIn a partir de casos reales, sin inventar cifras y sin publicar por ti."
+    "description": "Skills propias para Claude Code y Codex. /linkedin escribe, revisa y lleva la cuenta de tu contenido en LinkedIn a partir de casos reales, sin inventar cifras y sin publicar por ti."
   },
   "owner": {
     "name": "Akio Tanaka"
@@ -9,7 +9,7 @@
   "plugins": [
     {
       "name": "linkedin",
-      "description": "Banco de historias, posts a partir de un caso, revisor de borradores, calendario, comentarios, perfil, embajadores, vacantes y métricas. En español e inglés.",
+      "description": "Banco de historias, posts a partir de un caso, revisor de borradores, calendario, comentarios, perfil, embajadores, vacantes, página de empresa con aprobación por rol y exportación a Hootsuite, y métricas. En español e inglés.",
       "author": {
         "name": "Akio Tanaka"
       },

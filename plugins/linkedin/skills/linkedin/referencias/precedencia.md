@@ -4,7 +4,8 @@ Un orden fijo, para no improvisar uno con el borrador a medias. Cada regla ya
 existe en otro archivo; aquí solo está el orden.
 
 1. **Lo que la persona dejó fijado.** Lo que está en `perfil.md` (Nunca nombrar,
-   Temas fuera) o lo que dijo antes en la conversación. "No nombres a ese
+   Temas fuera), en `marca.md` (Nunca nombrar, Frases prohibidas, Aviso
+   obligatorio, Aprobación) o lo que dijo antes en la conversación. "No nombres a ese
    cliente" no se revisa porque el post quedaría mejor con el nombre.
 2. **La verdad de los datos.** Ninguna cifra, fecha, cliente ni resultado
    inventado. Si el banco no tiene el dato, se pregunta; si la persona no lo
@@ -33,6 +34,8 @@ toca ninguna de estas reglas.
 | Regla | Dónde se hace cumplir |
 |---|---|
 | Nunca nombrar | `linkedin.py revisar` (R16 bloquea el borrador) |
+| Frases prohibidas y aviso obligatorio de la marca | `linkedin.py revisar` (R19 y R20) |
+| Aprobación por rol en posts de página | `linkedin.py exportar` y `registrar` rechazan el borrador sin `aprobado_por` y `aprobado_el` |
 | Cifras con fuente | `linkedin.py revisar` las lista; la tabla de trazabilidad del borrador las ata |
 | Rayas, barras, muletillas, contrastes | `linkedin.py revisar` (R01 a R04) |
 | Aprobación | `modos/publicar.md`: la tarjeta de aprobación va antes de cualquier registro |
