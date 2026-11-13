@@ -56,6 +56,23 @@ Fuente: `https://www.linkedin.com/help/linkedin/answer/a516971`.
 No encontramos una página de ayuda oficial con los tres últimos. El editor avisa
 si te pasas, así que el revisor los usa como referencia.
 
+## Imágenes
+
+El Images API de LinkedIn, que es el camino oficial para subir una imagen a un
+post, acepta:
+
+- JPG, PNG y GIF, con menos de 36.152.320 píxeles. Un GIF, hasta 250 cuadros.
+- Texto alternativo (`altText`) de hasta 4.086 caracteres, con menos de 120
+  recomendados. Es lo que lee un lector de pantalla.
+- Subir imágenes con los mismos permisos que publican el texto: `w_member_social`
+  para una persona y `w_organization_social` para una página.
+
+`linkedin.py revisar` usa los formatos y los dos largos en R21 y R23. La carga
+masiva de Hootsuite no lleva imágenes (ver más abajo).
+
+Fuente: `https://learn.microsoft.com/en-us/linkedin/marketing/community-management/shares/images-api`,
+revisada el 13 de noviembre de 2026.
+
 ## "...ver más"
 
 LinkedIn corta el post después de unas líneas. El punto exacto depende del

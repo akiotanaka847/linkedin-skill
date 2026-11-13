@@ -366,6 +366,7 @@ class Exportacion(unittest.TestCase):
         self.escribir("dup-1.md", borrador_pagina("Texto repetido con 3 datos.", programado_para="2026-11-23 08:00"))
         self.escribir("dup-2.md", borrador_pagina("Texto  repetido con 3 datos.", programado_para="2026-11-24 08:00"))
         self.escribir("revisor.md", borrador_pagina("En resumen, resultados garantizados.", programado_para="2026-11-25 08:00"))
+        # Imagen en el formato anterior a 1.2.0: un párrafo suelto, sin alt, origen ni archivo.
         self.escribir("imagen.md", borrador_pagina("Seis, con 5 talleres.", programado_para="2026-11-26 08:00")
                       + "\n## Imagen\n\nUna foto del taller.\n")
         _, errores, avisos = self.preparar()
@@ -376,6 +377,9 @@ class Exportacion(unittest.TestCase):
         self.assertIn("mismo-horario-1.md y mismo-horario-2.md: misma hora", texto)
         self.assertIn("dup-1.md y dup-2.md: mismo texto", texto)
         self.assertIn("revisor.md: no pasa el revisor (R03, R19)", texto)
+        self.assertIn("imagen.md: no pasa el revisor (R21, R22)", texto)
+        self.assertIn("imagen.md: la imagen no tiene archivo", texto)
+        self.assertIn("imagen.md: un post con imagen necesita huella_aprobada", texto)
         self.assertTrue(any(a.startswith("imagen.md") for a in avisos))
 
     def test_todo_o_nada_desde_la_linea_de_comandos(self):
@@ -394,7 +398,179 @@ class Exportacion(unittest.TestCase):
         datos = json.loads(salida.read_text(encoding="utf-8"))
         self.assertEqual(datos[0]["programado_para"], "2030-01-15T09:30")
         self.assertEqual(set(datos[0]), {"archivo", "programado_para", "zona_horaria", "texto", "enlace", "pilar",
-                                         "formato", "tipo_pieza", "aprobado_por", "aprobado_el", "lleva_imagen"})
+                                         "formato", "tipo_pieza", "aprobado_por", "aprobado_el", "lleva_imagen",
+                                         "imagen", "huella"})
+        self.assertIsNone(datos[0]["imagen"])
+        self.assertRegex(datos[0]["huella"], r"^[0-9a-f]{64}$")
+
+
+def png(ruta, contenido=b"prueba"):
+    """Un archivo con la firma de PNG. El revisor no abre la imagen; basta con que exista."""
+    ruta.parent.mkdir(parents=True, exist_ok=True)
+    ruta.write_bytes(bytes([137, 80, 78, 71, 13, 10, 26, 10]) + contenido)
+    return ruta
+
+
+def seccion_imagen(**campos):
+    return "\n## Imagen\n\n" + "".join("- %s: %s\n" % kv for kv in campos.items())
+
+
+ALT = "Gráfico de barras: el cierre contable bajó de 14 a 9 días."
+
+
+class Imagenes(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.carpeta = Path(self.tmp.name)
+        li.iniciar(self.carpeta)
+        self.biblioteca = self.carpeta / "biblioteca"
+        self.foto = png(self.biblioteca / "cierre.png")
+        marca = MARCA + "\n## Imágenes\n\n- Generar imágenes: no\n\n### Bibliotecas aprobadas\n\n- %s\n" % self.biblioteca
+        (self.carpeta / "marca.md").write_text(marca, encoding="utf-8")
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def politica(self, destino="pagina"):
+        return li.politica_de_imagen(self.carpeta, destino)
+
+    def cods(self, imagen, destino="pagina", nivel=None, nunca=(), prohibidas=()):
+        inf = li.revisar("Bajamos el cierre de 14 a 9 días.", imagen=imagen, politica_imagen=self.politica(destino),
+                         base=self.carpeta, nunca=nunca, prohibidas=prohibidas)
+        return [h["codigo"] for h in inf["hallazgos"] if nivel is None or h["nivel"] == nivel]
+
+    def imagen(self, **campos):
+        base = {"origen": "biblioteca", "archivo": str(self.foto), "alt": ALT}
+        base.update(campos)
+        return li.leer_imagen(seccion_imagen(**base))
+
+    def test_leer_imagen(self):
+        contenido = ("---\nidioma: es\n---\n\nTexto del post.\n" + seccion_imagen(
+            origen="Plantilla", archivo="imagenes/a.png", alt=ALT, texto="De 14 a 9 días")
+            + "\n## Notas\n\n- archivo: esto no es de la imagen\n")
+        img = li.leer_imagen(contenido)
+        self.assertEqual(img["origen"], "plantilla")
+        self.assertEqual(img["archivo"], "imagenes/a.png")
+        self.assertEqual(img["texto"], "De 14 a 9 días")
+        self.assertEqual(li.separar_borrador(contenido)[1], "Texto del post.")
+        self.assertEqual(li.leer_imagen("## Imagen\n\nUna foto del taller.\n")["muestra"], "Una foto del taller.")
+        self.assertIsNone(li.leer_imagen("Texto sin imagen.\n\n## Imagenes viejas\n\n- alt: x\n"))
+
+    def test_imagen_completa_pasa(self):
+        self.assertEqual(self.cods(self.imagen()), [])
+
+    def test_texto_alternativo(self):
+        self.assertIn("R21", self.cods(self.imagen(alt=""), nivel="error"))
+        self.assertIn("R21", self.cods(self.imagen(alt="a" * 121), nivel="aviso"))
+        self.assertIn("R21", self.cods(self.imagen(alt="a" * 4087), nivel="error"))
+
+    def test_origen(self):
+        self.assertIn("R22", self.cods(self.imagen(origen="internet"), nivel="error"))
+        self.assertIn("R22", self.cods(self.imagen(origen=""), nivel="error"))
+
+    def test_archivo(self):
+        self.assertEqual(self.cods(self.imagen(archivo="")), ["R23"])
+        self.assertIn("R23", self.cods(self.imagen(archivo=""), nivel="aviso"))
+        self.assertIn("R23", self.cods(self.imagen(archivo=str(png(self.biblioteca / "a.webp"))), nivel="error"))
+        self.assertIn("R23", self.cods(self.imagen(archivo=str(self.biblioteca / "no-existe.png")), nivel="error"))
+        relativo = self.imagen(archivo="biblioteca/cierre.png")
+        self.assertEqual(self.cods(relativo), [])
+
+    def test_imagen_generada_segun_la_marca(self):
+        generada = self.imagen(origen="generada", archivo=str(png(self.carpeta / "generadas" / "g.png")),
+                               prompt="Ilustración de un calendario")
+        self.assertIn("R24", self.cods(generada, nivel="error"))
+        self.assertNotIn("R24", self.cods(generada, destino="perfil"))
+        marca = (self.carpeta / "marca.md").read_text(encoding="utf-8")
+        (self.carpeta / "marca.md").write_text(marca.replace("Generar imágenes: no", "Generar imágenes: sí"),
+                                               encoding="utf-8")
+        self.assertNotIn("R24", self.cods(generada))
+
+    def test_bibliotecas_aprobadas(self):
+        afuera = png(self.carpeta / "descargas" / "x.png")
+        self.assertIn("R25", self.cods(self.imagen(archivo=str(afuera)), nivel="error"))
+        self.assertNotIn("R25", self.cods(self.imagen(archivo=str(afuera)), destino="perfil"))
+        escape = str(self.biblioteca / ".." / "descargas" / "x.png")
+        self.assertIn("R25", self.cods(self.imagen(archivo=escape), nivel="error"))
+        web = ["https://marca.ejemplo.com/imagenes"]
+        self.assertTrue(li._en_biblioteca("https://marca.ejemplo.com/imagenes/a.png", web))
+        self.assertFalse(li._en_biblioteca("https://marca.ejemplo.com/imagenes-viejas/a.png", web))
+        self.assertFalse(li._en_biblioteca("https://marca.ejemplo.com/imagenes/../otra/a.png", web))
+
+    def test_texto_sobre_la_imagen_pasa_por_las_reglas(self):
+        inf = li.revisar("Bajamos el cierre de 14 a 9 días.", imagen=self.imagen(texto="En resumen, Cliente Reservado"),
+                         politica_imagen=self.politica(), base=self.carpeta, nunca=["Cliente Reservado"])
+        mensajes = [h["mensaje"] for h in inf["hallazgos"] if h["codigo"] in ("R03", "R16")]
+        self.assertEqual(len(mensajes), 2)
+        self.assertTrue(all(m.startswith("En la imagen") for m in mensajes))
+        self.assertIn("R19", self.cods(self.imagen(texto="Resultados garantizados"), prohibidas=["resultados garantizados"]))
+
+    def test_huella(self):
+        img = self.imagen()
+        h = li.huella("Texto.", img, self.carpeta)
+        self.assertEqual(h, li.huella("Texto.", img, self.carpeta))
+        self.assertNotEqual(h, li.huella("Texto distinto.", img, self.carpeta))
+        self.assertNotEqual(h, li.huella("Texto.", self.imagen(alt="Otro alt"), self.carpeta))
+        self.assertNotEqual(h, li.huella("Texto.", None, self.carpeta))
+        png(self.foto, b"otra foto con el mismo nombre")
+        self.assertNotEqual(h, li.huella("Texto.", img, self.carpeta))
+
+    def borrador_con_imagen(self, nombre="foto.md", huella_aprobada=True, **campos):
+        img = {"origen": "biblioteca", "archivo": "../biblioteca/cierre.png", "alt": ALT}
+        img.update(campos)
+        contenido = borrador_pagina("Bajamos el cierre contable de 14 a 9 días.",
+                                    programado_para="2030-01-15 09:30") + seccion_imagen(**img)
+        ruta = self.carpeta / "borradores" / nombre
+        ruta.write_text(contenido, encoding="utf-8")
+        if huella_aprobada:
+            meta, texto = li.separar_borrador(contenido)
+            h = li.huella(texto, li.leer_imagen(contenido), ruta.parent)
+            ruta.write_text(contenido.replace("estado: aprobado", "estado: aprobado\nhuella_aprobada: " + h),
+                            encoding="utf-8")
+        return ruta
+
+    def test_exporta_la_imagen_con_su_huella(self):
+        self.borrador_con_imagen()
+        piezas, errores, avisos = li.preparar_exportacion(self.carpeta, ahora=datetime(2026, 11, 12, 10, 0))
+        self.assertEqual(errores, [])
+        img = piezas[0]["imagen"]
+        self.assertEqual(img["archivo"], str(self.foto.resolve()))
+        self.assertEqual(img["sha256"], li.sha256_de_archivo(self.foto))
+        self.assertEqual(img["alt"], ALT)
+        self.assertTrue(piezas[0]["lleva_imagen"])
+        self.assertTrue(any("Hootsuite" in a for a in avisos))
+
+    def test_no_exporta_si_cambio_despues_de_aprobado(self):
+        self.borrador_con_imagen()
+        png(self.foto, b"la foto cambio en la biblioteca")
+        _, errores, _ = li.preparar_exportacion(self.carpeta, ahora=datetime(2026, 11, 12, 10, 0))
+        self.assertIn("foto.md: cambió después de aprobado", "\n".join(errores))
+
+    def test_no_exporta_una_imagen_sin_huella(self):
+        self.borrador_con_imagen(huella_aprobada=False)
+        _, errores, _ = li.preparar_exportacion(self.carpeta, ahora=datetime(2026, 11, 12, 10, 0))
+        self.assertIn("foto.md: un post con imagen necesita huella_aprobada", "\n".join(errores))
+
+    def test_comandos_revisar_huella_y_registrar(self):
+        ruta = self.borrador_con_imagen()
+        env = dict(os.environ, LINKEDIN_SKILL_DIR=str(self.carpeta), PYTHONUTF8="1")
+        correr = lambda *a: subprocess.run([sys.executable, str(SCRIPT)] + list(a), capture_output=True,
+                                           text=True, env=env)
+        r = correr("revisar", str(ruta), "--json")
+        self.assertEqual(r.returncode, 0, r.stdout)
+        self.assertEqual(json.loads(r.stdout)["imagen"]["origen"], "biblioteca")
+        r = correr("huella", str(ruta))
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertRegex(r.stdout.strip(), r"^[0-9a-f]{64}$")
+        ruta.write_text(ruta.read_text(encoding="utf-8").replace("de 14 a 9", "de 15 a 9"), encoding="utf-8")
+        self.assertEqual(correr("huella", str(ruta)).returncode, 1)
+        with self.assertRaises(SystemExit):
+            li.registrar(self.carpeta, ruta, url="https://www.linkedin.com/feed/update/5")
+
+    def test_plantilla_de_marca_sin_politica(self):
+        plantilla = SKILL / "plantillas" / "marca.md"
+        politica = li.politica_de_imagen(self.carpeta, "pagina", marca=plantilla)
+        self.assertEqual(politica, {"generar": False, "bibliotecas": []})
 
 
 class LineaDeComandos(unittest.TestCase):

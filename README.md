@@ -64,6 +64,7 @@ Requiere Python 3.9 o superior, sin dependencias.
 |---|---|
 | `entrevista` | Te pregunta, o lee tus informes y notas, y llena el perfil y el banco de historias con cifra y fuente |
 | `post` | Redacta un post a partir de un caso del banco, o de un webinar, una transcripción o un documento (un caso por post) |
+| `imagen` | Elige la imagen de una biblioteca aprobada, la adapta con una plantilla o escribe el prompt para generarla, con texto alternativo y reglas de marca |
 | `revisar` | Corre el revisor y después lo que un script no ve: cifras sin fuente, inferencias, confidencialidad |
 | `calendario` | Reparte las próximas semanas por pilares; cada fecha apunta a una historia del banco |
 | `comentar` | Dos opciones de comentario para un post ajeno, o respuestas ordenadas para los comentarios en los tuyos |
@@ -83,8 +84,8 @@ Requiere Python 3.9 o superior, sin dependencias.
    que ninguna se escape.
 3. **Confidencialidad de agencia.** La lista Nunca nombrar del perfil bloquea el
    borrador. Clientes, nombres internos y lo dicho en reuniones quedan fuera.
-4. **Un revisor que se puede leer.** `linkedin.py revisar` aplica 18 reglas con
-   código, nivel y sugerencia. Las muletillas viven en
+4. **Un revisor que se puede leer.** `linkedin.py revisar` aplica 23 reglas con
+   código, nivel y sugerencia, cinco de ellas para la imagen del post. Las muletillas viven en
    [`muletillas.json`](plugins/linkedin/skills/linkedin/muletillas.json), en
    español e inglés, y las puedes cambiar.
 5. **Tus datos, no los de otros.** La skill no repite horarios óptimos ni
@@ -95,6 +96,11 @@ Requiere Python 3.9 o superior, sin dependencias.
    con frases que cumplimiento no permite y avisos que van siempre. Cada post de
    página lleva quién lo aprobó y cuándo; sin eso, `exportar` no arma el CSV de
    Hootsuite y `registrar` no lo anota.
+7. **Imágenes con las mismas reglas.** Cada imagen trae su origen (biblioteca,
+   plantilla o generada), su archivo y su texto alternativo. El texto que va sobre
+   ella pasa por el revisor, la marca decide si se generan imágenes y de qué
+   bibliotecas salen, y la aprobación queda atada a una huella del texto y del
+   archivo: si alguien cambia la foto después, no se exporta.
 
 ## Uso rápido
 

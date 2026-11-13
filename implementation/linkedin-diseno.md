@@ -63,6 +63,26 @@ errores) queda publicado.
 Para poder citar `en resumen` en la documentación sin que el revisor la bloquee.
 En LinkedIn las comillas invertidas no se ven, así que un post real no las usa.
 
+## D8. La imagen se describe, se revisa y se aprueba; la skill no la dibuja
+
+El borrador trae la imagen en `## Imagen`: origen, archivo, texto alternativo,
+texto sobre la imagen, derechos y prompt. El revisor la valida (R21 a R25) y pasa
+el texto de la imagen por las mismas reglas del post. La aprobación queda atada a
+una huella SHA-256 del texto, del contenido del archivo, del texto alternativo y
+del texto de la imagen; `exportar` y `registrar` la comparan.
+
+**Por qué la huella:** la imagen vive en un archivo aparte que puede cambiar sin
+que nadie toque el borrador, por ejemplo cuando alguien reemplaza la foto en la
+biblioteca con el mismo nombre. Sin huella, se publicaría una imagen que nadie
+aprobó.
+
+**Descartado:** generar la imagen desde `linkedin.py` llamando a un modelo de
+imágenes. Rompe dos reglas del script (solo biblioteca estándar y sin red), ata la
+skill a un proveedor y a una credencial. Cada entorno resuelve la imagen con lo que
+tiene: un agente en la nube llama a su propio modelo de imágenes con el prompt del
+modo imagen, y en un asistente sin esa herramienta la persona genera el archivo y
+lo pasa.
+
 ## Pendiente
 
 - Lectura de las estadísticas exportadas desde LinkedIn, en vez de dictar los

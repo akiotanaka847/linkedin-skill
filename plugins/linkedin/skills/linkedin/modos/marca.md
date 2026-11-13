@@ -85,22 +85,27 @@ Texto del post.
   o 5.
 - `aprobado_por` y `aprobado_el` los escribe el agente solo cuando la persona dice
   quién aprobó y cuándo. Nunca se infieren.
-- Al aprobarse: `estado: aprobado`.
+- Al aprobarse: `estado: aprobado` y `huella_aprobada:` con lo que devuelve
+  `LI huella <borrador>`. Un post con imagen no se exporta sin huella.
+- La imagen, si hay, va en `## Imagen` (ver `modos/imagen.md`) y sigue las reglas
+  de `## Imágenes` en `marca.md`.
 
 ## Revisión
 
 `LI revisar <borrador>`. Con `destino: pagina`, además de las reglas de siempre,
-el revisor bloquea las frases prohibidas de la marca (R19) y exige el aviso
-obligatorio (R20).
+el revisor bloquea las frases prohibidas de la marca (R19), exige el aviso
+obligatorio (R20) y, si hay imagen, bloquea las generadas cuando la marca no las
+permite (R24) y los archivos fuera de sus bibliotecas aprobadas (R25).
 
 ## Aprobación por rol
 
 1. La tarjeta de aprobación (la de `modos/post.md`) va a quien indica la tabla
    Aprobación de `marca.md` para ese tipo de pieza.
 2. La persona que usa la skill confirma quién aprobó y cuándo. El agente escribe
-   `aprobado_por`, `aprobado_el` y `estado: aprobado`.
-3. Si alguien cambia el texto después de aprobado, vuelve a `estado: borrador` y
-   se borra la aprobación.
+   `aprobado_por`, `aprobado_el`, `huella_aprobada` y `estado: aprobado`.
+3. Si alguien cambia el texto o la imagen después de aprobado, vuelve a
+   `estado: borrador` y se borra la aprobación. Si nadie lo hace, la huella deja de
+   coincidir y `exportar` lo detiene.
 
 ## Programación
 
@@ -114,9 +119,11 @@ nada comprueba que cada pieza pase el revisor, tenga aprobación, caiga en minut
 terminados en 0 o 5, esté a 20 minutos o más de ahora, no comparta horario ni
 texto con otra y que no pasen de 350. Si algo falla, no exporta nada.
 
-Las imágenes no viajan en la carga masiva: se agregan en Hootsuite después. Antes
-de la primera carga, compara el archivo con la plantilla que descarga el Bulk
-Composer de Hootsuite (ver `referencias/linkedin.md`).
+Las imágenes no viajan en la carga masiva: se agregan en Hootsuite después, con el
+archivo y el texto alternativo del borrador. Antes de la primera carga, compara el
+archivo con la plantilla que descarga el Bulk Composer de Hootsuite (ver
+`referencias/linkedin.md`). El JSON sí lleva la imagen: su archivo, su SHA-256 y su
+texto alternativo.
 
 Para otro agente o un servicio que llame a la API de Hootsuite:
 

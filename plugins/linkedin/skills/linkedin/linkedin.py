@@ -5,9 +5,10 @@ Cuatro trabajos deterministas que el agente no debe hacer a ojo:
   1. La carpeta de datos (perfil, marca, banco de historias, calendario, borradores, registro).
   2. La revisión de un borrador: rayas, barras, muletillas, contrastes de póster,
      nombres que no pueden salir, frases que la marca prohíbe, avisos obligatorios,
-     cifras que hay que trazar.
+     cifras que hay que trazar, y la imagen (texto alternativo, origen, archivo y el
+     texto que va sobre ella).
   3. La exportación de lo aprobado para la página de empresa (CSV de Hootsuite o JSON
-     para otro agente), con la aprobación como condición.
+     para otro agente), con la aprobación y su huella como condición.
   4. El registro de lo publicado y el resumen de sus métricas.
 
 Solo biblioteca estándar. Python 3.9 o superior.
@@ -15,6 +16,7 @@ Solo biblioteca estándar. Python 3.9 o superior.
 
 import argparse
 import csv
+import hashlib
 import json
 import os
 import re
@@ -43,6 +45,14 @@ LIMITES = {"post": 3000, "comentario": 1250, "titular": 220, "acerca": 2600, "do
 
 # Aproximación de lo que se ve antes de "...ver más". Depende del dispositivo.
 CORTE_VER_MAS = 210
+
+# Imágenes, según el Images API de LinkedIn (ver referencias/linkedin.md): JPG, PNG o
+# GIF, y texto alternativo de hasta 4.086 caracteres, con menos de 120 recomendados.
+FORMATOS_IMAGEN = (".jpg", ".jpeg", ".png", ".gif")
+ALT_MAXIMO = 4086
+ALT_RECOMENDADO = 120
+ORIGENES_IMAGEN = ("biblioteca", "plantilla", "generada")
+CAMPOS_IMAGEN = ("muestra", "origen", "archivo", "alt", "texto", "derechos", "prompt")
 
 RAYA = "\u2014"
 SEMIRRAYA = "\u2013"
@@ -173,6 +183,21 @@ def reglas_de_destino(carpeta, destino, perfil=None, marca=None):
     return nunca, prohibidas, avisos
 
 
+def politica_de_imagen(carpeta, destino, marca=None):
+    """Qué imágenes acepta un post de página, según '## Imágenes' de marca.md.
+
+    Un post personal no tiene política de marca: devuelve None y el revisor solo
+    aplica las reglas de forma (texto alternativo, origen y archivo). Si 'Generar
+    imágenes' queda vacío, cuenta como no.
+    """
+    if destino != "pagina":
+        return None
+    marca = Path(marca) if marca else carpeta / "marca.md"
+    generar = leer_campo(marca, "Generar imágenes").lower()
+    return {"generar": generar.startswith(("s", "y")),
+            "bibliotecas": leer_lista(marca, "Bibliotecas aprobadas")}
+
+
 # ---------------------------------------------------------------------------
 # Lectura de borradores
 # ---------------------------------------------------------------------------
@@ -196,6 +221,84 @@ def separar_borrador(contenido):
             break
         cuerpo.append(l)
     return meta, "\n".join(cuerpo).strip("\n")
+
+
+def leer_imagen(contenido):
+    """La sección '## Imagen' de un borrador como diccionario, o None si no hay.
+
+    Cada campo va en una viñeta '- campo: valor' (ver modos/imagen.md). Un párrafo
+    suelto, como en los borradores anteriores a la versión 1.2.0, cuenta como 'muestra'.
+    """
+    m = re.search(r"^##[ \t]+imagen\b[^\n]*\n?(.*?)(?=^##[ \t]|\Z)", contenido, re.I | re.M | re.S)
+    if not m:
+        return None
+    imagen = dict.fromkeys(CAMPOS_IMAGEN, "")
+    sueltas = []
+    for linea in m.group(1).splitlines():
+        campo = re.match(r"^\s*-\s*([a-z]+)\s*:[ \t]*(.*)$", linea, re.I)
+        if campo and campo.group(1).lower() in imagen:
+            imagen[campo.group(1).lower()] = campo.group(2).strip()
+        elif linea.strip():
+            sueltas.append(linea.strip())
+    if not imagen["muestra"] and sueltas:
+        imagen["muestra"] = " ".join(sueltas)
+    imagen["origen"] = imagen["origen"].lower()
+    return imagen
+
+
+def _es_direccion(valor):
+    return bool(re.match(r"^[a-z][a-z0-9+.-]*://", valor, re.I))
+
+
+def ruta_de_imagen(archivo, base=None):
+    """La ruta local del archivo de una imagen, o None si es una dirección web o no hay.
+
+    Una ruta relativa se lee desde `base`, que es la carpeta del borrador.
+    """
+    if not archivo or _es_direccion(archivo):
+        return None
+    ruta = Path(archivo).expanduser()
+    if not ruta.is_absolute() and base is not None:
+        ruta = Path(base) / ruta
+    return ruta
+
+
+def _en_biblioteca(archivo, bibliotecas, base=None):
+    """Si el archivo está dentro de alguna biblioteca aprobada, carpeta o dirección web."""
+    ruta = ruta_de_imagen(archivo, base)
+    for biblioteca in bibliotecas:
+        if _es_direccion(biblioteca):
+            prefijo = biblioteca if biblioteca.endswith("/") else biblioteca + "/"
+            if archivo.startswith(prefijo) and "/../" not in "/" + archivo[len(prefijo):]:
+                return True
+        elif ruta is not None:
+            try:
+                ruta.resolve().relative_to(Path(biblioteca).expanduser().resolve())
+                return True
+            except ValueError:
+                continue
+    return False
+
+
+def sha256_de_archivo(ruta):
+    return hashlib.sha256(Path(ruta).read_bytes()).hexdigest()
+
+
+def huella(texto, imagen=None, base=None):
+    """SHA-256 de lo que se aprueba: el texto del post y, si hay, la imagen.
+
+    De la imagen cuentan el contenido del archivo (su dirección, si es web), el texto
+    alternativo y el texto que va sobre ella. Si cambia cualquiera, cambia la huella.
+    """
+    partes = [texto.replace("\r\n", "\n").strip("\n")]
+    if imagen:
+        ruta = ruta_de_imagen(imagen.get("archivo", ""), base)
+        if ruta is not None and ruta.is_file():
+            archivo = "sha256:" + sha256_de_archivo(ruta)
+        else:
+            archivo = imagen.get("archivo", "")
+        partes += [archivo, imagen.get("alt", ""), imagen.get("texto", "")]
+    return hashlib.sha256(chr(0).join(partes).encode("utf-8")).hexdigest()
 
 
 # ---------------------------------------------------------------------------
@@ -303,8 +406,12 @@ TRIADA = re.compile(
 
 
 def revisar(texto, tipo="post", idioma="auto", nunca=(), reglas_muletillas=None,
-            prohibidas=(), avisos_obligatorios=()):
-    """Revisa un texto y devuelve un informe con hallazgos ordenables por severidad."""
+            prohibidas=(), avisos_obligatorios=(), imagen=None, politica_imagen=None, base=None):
+    """Revisa un texto y devuelve un informe con hallazgos ordenables por severidad.
+
+    Con `imagen` (el resultado de leer_imagen) suma las reglas de la imagen; `base` es
+    la carpeta del borrador, desde donde se leen las rutas relativas del archivo.
+    """
     if tipo not in LIMITES:
         raise ValueError("tipo desconocido: %s" % tipo)
     if reglas_muletillas is None:
@@ -452,15 +559,70 @@ def revisar(texto, tipo="post", idioma="auto", nunca=(), reglas_muletillas=None,
         corte = previa.rfind(" ", 0, CORTE_VER_MAS)
         previa = previa[:corte if corte > 0 else CORTE_VER_MAS] + "..."
 
+    if imagen is not None:
+        hallazgos.extend(revisar_imagen(imagen, politica_imagen, nunca, prohibidas, base, reglas_muletillas))
+
     orden = {"error": 0, "aviso": 1, "info": 2}
     hallazgos.sort(key=lambda h: (orden[h["nivel"]], h["linea"] or 0, h["codigo"]))
     return {
         "tipo": tipo, "idioma": idioma, "caracteres": caracteres, "palabras": palabras,
         "antes_de_ver_mas": previa if not es_doc else "",
-        "hallazgos": hallazgos, "cifras": cifras,
+        "hallazgos": hallazgos, "cifras": cifras, "imagen": imagen,
         "errores": sum(1 for h in hallazgos if h["nivel"] == "error"),
         "avisos": sum(1 for h in hallazgos if h["nivel"] == "aviso"),
     }
+
+
+def revisar_imagen(imagen, politica=None, nunca=(), prohibidas=(), base=None, reglas_muletillas=None):
+    """Hallazgos de la sección '## Imagen': R21 a R25 y el texto que va sobre la imagen.
+
+    `politica` es la de politica_de_imagen(): None en un post personal.
+    """
+    hallazgos = []
+
+    def agregar(codigo, nivel, mensaje, fragmento=""):
+        hallazgos.append({"codigo": codigo, "nivel": nivel, "mensaje": mensaje,
+                          "linea": None, "fragmento": fragmento})
+
+    # R21 texto alternativo
+    alt = imagen.get("alt", "")
+    if not alt:
+        agregar("R21", "error", "La imagen no tiene texto alternativo (alt).")
+    elif len(alt) > ALT_MAXIMO:
+        agregar("R21", "error", "Texto alternativo de %d caracteres; LinkedIn acepta hasta %d." % (len(alt), ALT_MAXIMO))
+    elif len(alt) > ALT_RECOMENDADO:
+        agregar("R21", "aviso", "Texto alternativo de %d caracteres; LinkedIn recomienda menos de %d." % (
+            len(alt), ALT_RECOMENDADO))
+    # R22 origen
+    origen = imagen.get("origen", "")
+    if origen not in ORIGENES_IMAGEN:
+        agregar("R22", "error", "El origen de la imagen debe ser biblioteca, plantilla o generada.", origen)
+    # R23 archivo
+    archivo = imagen.get("archivo", "")
+    if not archivo:
+        agregar("R23", "aviso", "La imagen todavía no tiene archivo. Sin archivo no se aprueba ni se exporta.")
+    else:
+        sufijo = Path(re.split(r"[?#]", archivo)[0]).suffix.lower()
+        if sufijo not in FORMATOS_IMAGEN:
+            agregar("R23", "error", "LinkedIn acepta JPG, PNG o GIF; este archivo es %s." % (
+                sufijo or "sin extensión"), archivo)
+        ruta = ruta_de_imagen(archivo, base)
+        if ruta is not None and not ruta.is_file():
+            agregar("R23", "error", "No existe el archivo de la imagen.", archivo)
+    if politica is not None:
+        # R24 imágenes generadas en una página
+        if origen == "generada" and not politica["generar"]:
+            agregar("R24", "error", "La marca no permite imágenes generadas ('Generar imágenes' en marca.md).")
+        # R25 bibliotecas aprobadas
+        if (origen in ("biblioteca", "plantilla") and archivo and politica["bibliotecas"]
+                and not _en_biblioteca(archivo, politica["bibliotecas"], base)):
+            agregar("R25", "error", "El archivo no está en una biblioteca aprobada de la marca.", archivo)
+    # El texto que va sobre la imagen pasa por las mismas reglas que el post.
+    if imagen.get("texto"):
+        inf = revisar(imagen["texto"], "doc", "auto", nunca, reglas_muletillas, prohibidas)
+        for h in inf["hallazgos"]:
+            agregar(h["codigo"], h["nivel"], "En la imagen: " + h["mensaje"], h["fragmento"])
+    return hallazgos
 
 
 def _miles(n):
@@ -487,6 +649,13 @@ def imprimir_informe(inf):
     if inf["cifras"]:
         print("\nCIFRAS PARA TRAZAR (%d): cada una necesita su fuente en el banco o en el material." % len(inf["cifras"]))
         print("  " + ", ".join("%s (L%d)" % (c["cifra"], c["linea"]) for c in inf["cifras"]))
+    img = inf.get("imagen")
+    if img:
+        print("\nIMAGEN: %s, %s" % (img["origen"] or "sin origen", img["archivo"] or "sin archivo"))
+        if img["alt"]:
+            print("  alt (%d caracteres): %s" % (len(img["alt"]), img["alt"]))
+        if img["texto"]:
+            print("  texto sobre la imagen: %s" % img["texto"])
     print()
     if inf["errores"]:
         print("Resultado: no pasa, %d error%s." % (inf["errores"], "" if inf["errores"] == 1 else "es"))
@@ -521,10 +690,14 @@ def registrar(carpeta, archivo, url="", fecha=None, pilar=None, formato=None, id
     ruta = carpeta / "registro.csv"
     if not ruta.exists():
         raise SystemExit("No hay registro.csv. Corre primero: linkedin.py iniciar")
-    meta, texto = separar_borrador(Path(archivo).read_text(encoding="utf-8"))
+    contenido = Path(archivo).read_text(encoding="utf-8")
+    meta, texto = separar_borrador(contenido)
     destino = meta.get("destino", "perfil")
     if destino == "pagina" and not (meta.get("aprobado_por") and meta.get("aprobado_el")):
         raise SystemExit("Un post de página necesita aprobado_por y aprobado_el en el borrador.")
+    aprobada = meta.get("huella_aprobada")
+    if aprobada and aprobada != huella(texto, leer_imagen(contenido), Path(archivo).resolve().parent):
+        raise SystemExit("El borrador cambió después de aprobado: la huella no coincide.")
     filas = leer_registro(ruta)
     if url and any(f["url"] == url for f in filas):
         raise SystemExit("Esa URL ya está en el registro.")
@@ -559,6 +732,7 @@ def preparar_exportacion(carpeta, ahora=None, marca=None, perfil=None):
     """
     ahora = ahora or datetime.now()
     nunca, prohibidas, avisos_marca = reglas_de_destino(carpeta, "pagina", perfil, marca)
+    politica = politica_de_imagen(carpeta, "pagina", marca)
     piezas, errores, avisos = [], [], []
     for ruta in sorted((carpeta / "borradores").glob("*.md")):
         contenido = ruta.read_text(encoding="utf-8")
@@ -579,12 +753,22 @@ def preparar_exportacion(carpeta, ahora=None, marca=None, perfil=None):
         if cuando < ahora + timedelta(minutes=HOOTSUITE_MARGEN_MIN):
             errores.append("%s: %s queda a menos de %d minutos de ahora." % (
                 nombre, cuando.strftime("%Y-%m-%d %H:%M"), HOOTSUITE_MARGEN_MIN))
-        inf = revisar(texto, "post", meta.get("idioma", "auto"), nunca,
-                      prohibidas=prohibidas, avisos_obligatorios=avisos_marca)
+        imagen = leer_imagen(contenido)
+        inf = revisar(texto, "post", meta.get("idioma", "auto"), nunca, prohibidas=prohibidas,
+                      avisos_obligatorios=avisos_marca, imagen=imagen, politica_imagen=politica,
+                      base=ruta.parent)
         if inf["errores"]:
             codigos = sorted({h["codigo"] for h in inf["hallazgos"] if h["nivel"] == "error"})
             errores.append("%s: no pasa el revisor (%s)." % (nombre, ", ".join(codigos)))
-        if re.search(r"^##\s+imagen\b", contenido, re.I | re.M):
+        actual = huella(texto, imagen, ruta.parent)
+        aprobada = meta.get("huella_aprobada", "")
+        if aprobada and aprobada != actual:
+            errores.append("%s: cambió después de aprobado (la huella no coincide); vuelve a aprobarlo." % nombre)
+        if imagen:
+            if not imagen["archivo"]:
+                errores.append("%s: la imagen no tiene archivo." % nombre)
+            if not aprobada:
+                errores.append("%s: un post con imagen necesita huella_aprobada (LI huella)." % nombre)
             avisos.append("%s: la carga masiva no lleva imágenes; agrégala en Hootsuite después de subir el archivo." % nombre)
         piezas.append({
             "archivo": nombre, "programado_para": cuando.strftime("%Y-%m-%dT%H:%M"),
@@ -592,7 +776,8 @@ def preparar_exportacion(carpeta, ahora=None, marca=None, perfil=None):
             "texto": texto, "enlace": meta.get("enlace", ""), "pilar": meta.get("pilar", ""),
             "formato": meta.get("formato", ""), "tipo_pieza": meta.get("tipo_pieza", ""),
             "aprobado_por": meta["aprobado_por"], "aprobado_el": meta["aprobado_el"],
-            "lleva_imagen": bool(re.search(r"^##\s+imagen\b", contenido, re.I | re.M)),
+            "lleva_imagen": imagen is not None, "imagen": imagen_para_exportar(imagen, ruta.parent),
+            "huella": actual,
         })
     vistos, textos = {}, {}
     for pz in piezas:
@@ -607,6 +792,20 @@ def preparar_exportacion(carpeta, ahora=None, marca=None, perfil=None):
     if len(piezas) > HOOTSUITE_MAX:
         errores.append("%d piezas; Hootsuite acepta hasta %d por archivo." % (len(piezas), HOOTSUITE_MAX))
     return piezas, errores, avisos
+
+
+def imagen_para_exportar(imagen, base=None):
+    """La imagen como la necesita quien publica: archivo, su SHA-256 si es local, alt y texto."""
+    if not imagen:
+        return None
+    ruta = ruta_de_imagen(imagen["archivo"], base)
+    local = ruta is not None and ruta.is_file()
+    return {
+        "origen": imagen["origen"], "archivo": str(ruta.resolve()) if local else imagen["archivo"],
+        "sha256": sha256_de_archivo(ruta) if local else None, "alt": imagen["alt"],
+        "texto": imagen["texto"], "derechos": imagen["derechos"], "prompt": imagen["prompt"],
+        "muestra": imagen["muestra"],
+    }
 
 
 def escribir_hootsuite(piezas, salida, formato_fecha="dmy"):
@@ -732,6 +931,9 @@ def main(argv=None):
                     help="A nombre de quién sale. Por defecto, el 'destino' del borrador o 'perfil'.")
     pr.add_argument("--json", action="store_true")
 
+    ph = sub.add_parser("huella", help="Imprime la huella SHA-256 del texto y la imagen de un borrador.")
+    ph.add_argument("archivo")
+
     pe = sub.add_parser("exportar", help="Exporta los posts de página aprobados (CSV de Hootsuite o JSON).")
     pe.add_argument("--formato", choices=["hootsuite", "json"], default="hootsuite")
     pe.add_argument("--formato-fecha", choices=sorted(FORMATOS_FECHA), default="dmy",
@@ -788,13 +990,26 @@ def main(argv=None):
         meta, texto = separar_borrador(contenido) if a.tipo != "doc" else ({}, contenido)
         destino = a.destino or meta.get("destino") or "perfil"
         nunca, prohibidas, avisos = reglas_de_destino(carpeta, destino, a.perfil, a.marca)
-        inf = revisar(texto, a.tipo, a.idioma, nunca, prohibidas=prohibidas, avisos_obligatorios=avisos)
+        imagen = leer_imagen(contenido) if a.tipo == "post" else None
+        base = Path.cwd() if a.archivo == "-" else Path(a.archivo).resolve().parent
+        inf = revisar(texto, a.tipo, a.idioma, nunca, prohibidas=prohibidas, avisos_obligatorios=avisos,
+                      imagen=imagen, politica_imagen=politica_de_imagen(carpeta, destino, a.marca), base=base)
         inf["destino"] = destino
         if a.json:
             print(json.dumps(inf, ensure_ascii=False, indent=2))
         else:
             imprimir_informe(inf)
         return 1 if inf["errores"] else 0
+    elif a.cmd == "huella":
+        ruta = Path(a.archivo)
+        contenido = ruta.read_text(encoding="utf-8")
+        meta, texto = separar_borrador(contenido)
+        actual = huella(texto, leer_imagen(contenido), ruta.resolve().parent)
+        print(actual)
+        aprobada = meta.get("huella_aprobada")
+        if aprobada and aprobada != actual:
+            print("No coincide con huella_aprobada: el borrador cambió después de aprobado.", file=sys.stderr)
+            return 1
     elif a.cmd == "exportar":
         piezas, errores, avisos = preparar_exportacion(carpeta, marca=a.marca)
         for av in avisos:

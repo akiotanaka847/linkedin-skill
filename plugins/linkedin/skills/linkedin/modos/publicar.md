@@ -17,9 +17,14 @@ Ver `referencias/linkedin.md`.
 
 ## Paso 2: aprobación del texto exacto
 
-Muestra el texto final en un bloque y pregunta si se publica así. La aprobación
-vale para ese texto: si cambia una coma, se vuelve a mostrar. Una aprobación de
-otro día o de otro borrador no cuenta.
+Muestra el texto final en un bloque, con la imagen si hay, y pregunta si se
+publica así. La aprobación vale para ese texto y esa imagen: si cambia una coma o
+el archivo, se vuelve a mostrar. Una aprobación de otro día o de otro borrador no
+cuenta.
+
+Con la aprobación, corre `LI huella <borrador>` y escribe el resultado en
+`huella_aprobada:` del encabezado. Si el borrador cambia después, la huella deja de
+coincidir y `registrar` no lo anota.
 
 ## Paso 3: el paquete
 
@@ -27,7 +32,8 @@ Con la aprobación, entrega en este orden:
 
 1. **El texto**, en un bloque para copiar.
 2. **El primer comentario**, si hay, en otro bloque.
-3. **La imagen**, si hay: qué muestra y el texto alternativo.
+3. **La imagen**, si hay: el archivo y el texto alternativo, para pegarlo al subir
+   la imagen.
 4. **Cuándo.** El día que fija el calendario. La hora sale del perfil o, con datos
    suficientes, del registro; la skill no recomienda "horarios óptimos" sin datos
    propios.

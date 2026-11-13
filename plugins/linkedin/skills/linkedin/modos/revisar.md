@@ -46,8 +46,15 @@ errores.
 | R18 | Línea en mayúsculas | aviso |
 | R19 | Una frase de la lista Frases prohibidas de la marca | error |
 | R20 | Falta el aviso obligatorio de la marca | error |
+| R21 | Imagen sin texto alternativo, o con uno más largo de lo que acepta LinkedIn | error (aviso si pasa de 120) |
+| R22 | Origen de la imagen distinto de biblioteca, plantilla o generada | error |
+| R23 | Imagen sin archivo (aviso), en un formato que LinkedIn no acepta o que no existe (error) | aviso o error |
+| R24 | Imagen generada en una página que no lo permite | error |
+| R25 | Imagen fuera de las bibliotecas aprobadas de la marca | error |
 
-El script también lista las cifras que encontró y lo que se ve antes de "ver
+R21 a R25 se aplican cuando el borrador trae `## Imagen` (ver `modos/imagen.md`),
+y el texto que va sobre la imagen pasa por las mismas reglas que el post. El
+script también lista las cifras que encontró y lo que se ve antes de "ver
 más". Lo que va entre comillas invertidas se ignora, para poder citar una
 muletilla en un documento.
 

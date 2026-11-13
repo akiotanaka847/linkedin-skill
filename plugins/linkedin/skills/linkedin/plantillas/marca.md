@@ -65,6 +65,28 @@ la viñeta entre paréntesis y no se exige nada.
 
 - (por ejemplo, un aviso legal)
 
+## Imágenes
+
+Qué imágenes puede llevar un post de página. El revisor aplica las dos primeras
+reglas (R24 y R25); la lista de abajo la cumple quien genera la imagen y la
+confirma quien aprueba.
+
+- Generar imágenes: (sí o no; si queda vacío, no se generan)
+- Plantillas: (dónde están las plantillas para poner una cifra sobre una foto)
+
+### Bibliotecas aprobadas
+
+Carpetas o direcciones web con las imágenes que se pueden usar, una por viñeta. Si
+no hay ninguna, el revisor no limita de dónde sale el archivo.
+
+- (por ejemplo, la carpeta compartida de fotos de la marca)
+
+### Nunca en una imagen generada
+
+Se suma a la lista de `modos/imagen.md`.
+
+- (por ejemplo, oficinas reconocibles o productos sin lanzar)
+
 ## Hashtags de marca
 
 - (de cero a tres)

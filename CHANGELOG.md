@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.2.0] - 2026-11-13
+
+### Agrega
+- Modo `imagen`: elige la imagen de una biblioteca aprobada, la adapta con una plantilla de la marca o escribe el prompt para generarla, en ese orden de preferencia. La skill no dibuja ni llama a modelos de imágenes; describe, revisa y exige aprobación.
+- Sección `## Imagen` en el borrador, con un campo por viñeta: `muestra`, `origen`, `archivo`, `alt`, `texto`, `derechos` y `prompt`.
+- Reglas R21 a R25 en `linkedin.py revisar`: texto alternativo (falta, o pasa de 4.086 caracteres; aviso desde 120), origen (biblioteca, plantilla o generada), archivo (falta, formato distinto de JPG, PNG o GIF, o no existe), imagen generada en una página que no lo permite e imagen fuera de las bibliotecas aprobadas de la marca. El texto que va sobre la imagen pasa por las mismas reglas que el post.
+- Sección `## Imágenes` en la plantilla `marca.md`: si se generan imágenes, plantillas, bibliotecas aprobadas y lo que nunca va en una imagen generada.
+- `linkedin.py huella <borrador>`: SHA-256 del texto, del contenido del archivo de la imagen, del texto alternativo y del texto de la imagen. Al aprobar se guarda en `huella_aprobada`.
+- El JSON de `exportar` trae `imagen` (archivo, su SHA-256, alt, texto, derechos y prompt) y `huella`.
+- `referencias/linkedin.md`: formatos, píxeles y texto alternativo que acepta el Images API de LinkedIn, revisados el 13 de noviembre de 2026.
+
+### Cambia
+- `exportar` rechaza un post que cambió después de aprobado (la huella no coincide), un post de página con imagen sin `huella_aprobada` y una imagen sin archivo.
+- `registrar` rechaza un borrador cuya huella no coincide con `huella_aprobada`.
+- Un borrador con `## Imagen` en el formato anterior (un párrafo suelto) se lee como `muestra`, y el revisor pide el resto de los campos.
+
 ## [1.1.0] - 2026-11-12
 
 ### Agrega
